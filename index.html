@@ -189,7 +189,7 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
         <h2>Financial Controller:</h2>
         <table>
           <tr><td>Move</td><td><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> (or WASD / ZQSD)</td></tr>
-          <tr><td>Aim</td><td>automatic: strongest formula in range first, then the nearest</td></tr>
+          <tr><td>Aim</td><td>automatic: anything within 100 px first, then the strongest formula in range, then the nearest</td></tr>
           <tr><td>Goal</td><td>survive, then beat the boss to close the sheet; reports are walls</td></tr>
           <tr><td>Bonuses</td><td>formulas drop ribbon tools (B, I, U…), walk over them</td></tr>
           <tr><td>Pause</td><td><kbd>P</kbd> or <kbd>Esc</kbd></td></tr>
@@ -713,7 +713,7 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
     G.floats = G.floats.filter(f => f.life > 0);
   }
 
-  const RANGE = 520;
+  const RANGE = 520, CLOSE = 100;
   // Vrai si aucun reporting ne bloque la ligne de tir (le boss passe au-dessus des murs)
   function clearShot(e) {
     const p = G.p, d = Math.hypot(e.x - p.x, e.y - p.y), n = Math.ceil(d / 16);
@@ -732,6 +732,13 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
       const d = Math.hypot(e.x - p.x, e.y - p.y);
       if (d > RANGE) continue;
       if (d < fd) { fd = d; fallback = e; }
+    }
+    // Légitime défense : un ennemi à moins de 100 px passe avant tout le reste
+    if (fallback && fd < CLOSE) return fallback;
+    for (const e of G.enemies) {
+      if (e.hp <= 0) continue;
+      const d = Math.hypot(e.x - p.x, e.y - p.y);
+      if (d > RANGE) continue;
       if (!clearShot(e)) continue;
       const strength = e.maxHp;
       if (strength > bs || (strength === bs && d < bd)) { bs = strength; bd = d; best = e; }

@@ -5,7 +5,7 @@ A Vampire Survivors-style game set inside an Excel sheet. You are the default Wi
 **Play:** https://8k569yh6mt-tech.github.io/escape-controling/
 
 - Move: arrow keys (or WASD / ZQSD)
-- Aim: automatic (strongest formula in range first, then the nearest)
+- Aim: automatic (anything within 100 px first, then the strongest formula in range, then the nearest)
 - Pause: P or Esc
 
 The whole game is a single `index.html` file with no dependencies. Progress is saved in your browser.
