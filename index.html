@@ -1,0 +1,1256 @@
+<!doctype html>
+<title>escape-controling.xlsx</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout : une fenêtre Excel plein écran ; la grille est un canvas, le reste est du HTML. Look unique (Excel clair). */
+:root {
+  --xl-green: #217346;
+  --xl-green-dark: #185c37;
+  --chrome: #f3f3f3;
+  --chrome-line: #d1d1d1;
+  --ink: #252423;
+  --ink-soft: #605e5c;
+  --sheet: #ffffff;
+  --warn-bg: #fff4ce;
+  --warn-line: #f2d675;
+  --err: #c42b1c;
+  --font-ui: "Segoe UI", "Segoe UI Variable", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  --font-cell: Aptos, Calibri, Carlito, "Segoe UI", Arial, sans-serif;
+  color-scheme: light;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; background: var(--sheet); color: var(--ink);
+  font: 12px var(--font-ui); overflow: hidden; user-select: none;
+}
+.app { height: 100%; display: flex; flex-direction: column;
+  padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+
+/* Barre de titre */
+.titlebar { background: var(--xl-green); color: #fff; height: 32px; display: flex; align-items: center; gap: 12px; padding-inline: 8px 0; flex: none; }
+.xl-logo { width: 18px; height: 18px; border-radius: 3px; background: #fff; color: var(--xl-green); font: 700 12px/18px var(--font-ui); text-align: center; flex: none; }
+.autosave { display: flex; align-items: center; gap: 6px; opacity: .92; white-space: nowrap; }
+.toggle { width: 26px; height: 12px; border: 1px solid #fff; border-radius: 7px; position: relative; }
+.toggle::after { content: ""; position: absolute; left: 2px; top: 2px; width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+.qa { opacity: .9; letter-spacing: 6px; white-space: nowrap; }
+.doc-title { flex: 1; text-align: center; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.search { background: rgba(255,255,255,.18); border-radius: 4px; padding: 3px 10px; width: 180px; opacity: .9; white-space: nowrap; overflow: hidden; }
+.winbtns { display: flex; height: 100%; flex: none; }
+.winbtns span { width: 46px; display: grid; place-items: center; font-size: 13px; }
+.winbtns span:hover { background: rgba(255,255,255,.15); }
+.winbtns span.close:hover { background: #e81123; }
+
+/* Ruban */
+.tabs { background: var(--chrome); display: flex; gap: 2px; padding: 4px 8px 0; flex: none; overflow: hidden; white-space: nowrap; }
+.tabs span { padding: 4px 9px 5px; color: var(--ink); }
+.tabs span.file { color: var(--xl-green); }
+.tabs span.on { color: var(--xl-green); font-weight: 600; box-shadow: inset 0 -3px 0 var(--xl-green); }
+.ribbon { background: #fafafa; border-bottom: 1px solid var(--chrome-line); display: flex; height: 86px; padding: 4px 4px 0; flex: none; overflow: hidden; }
+.grp { display: flex; flex-direction: column; padding: 0 10px; border-right: 1px solid #e1dfdd; flex: none; }
+.grp .body { flex: 1; display: flex; align-items: center; gap: 4px; }
+.grp .lbl { text-align: center; color: var(--ink-soft); font-size: 11px; padding-bottom: 3px; }
+.big { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; }
+.big i { width: 30px; height: 30px; display: grid; place-items: center; font-style: normal; font-size: 20px; }
+.combo { border: 1px solid #c8c6c4; background: #fff; padding: 2px 5px; font-size: 11px; }
+.tool { width: 24px; height: 22px; display: grid; place-items: center; border-radius: 2px; font: 15px var(--font-cell); color: #a19f9d; }
+.tool { position: relative; }
+.tool.on { color: var(--ink); background: #d6ecdf; outline: 1px solid var(--xl-green); }
+.tool[data-lv]::after { content: attr(data-lv); position: absolute; right: -5px; bottom: -5px; background: var(--xl-green); color: #fff; font: 700 9px/12px var(--font-ui); min-width: 12px; height: 12px; border-radius: 6px; text-align: center; }
+.tool.pop { animation: pop .5s ease-out; }
+@keyframes pop { 0% { transform: scale(1.6); } 100% { transform: scale(1); } }
+.rows2 { display: flex; flex-direction: column; gap: 4px; }
+.rows2 > div { display: flex; gap: 2px; align-items: center; }
+
+/* Barre de formule */
+.fbar { display: flex; align-items: center; gap: 6px; height: 26px; border-bottom: 1px solid var(--chrome-line); background: #fff; padding-inline: 4px; flex: none; }
+.namebox { width: 82px; border: 1px solid #c8c6c4; height: 20px; display: flex; align-items: center; padding-left: 6px; font: 12px var(--font-cell); flex: none; }
+.fx-icons { color: var(--ink-soft); letter-spacing: 8px; padding-inline: 4px; flex: none; }
+.fx { flex: 1; min-width: 0; height: 20px; border-left: 1px solid #e1dfdd; display: flex; align-items: center; padding-left: 8px; font: 13px var(--font-cell); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Grille */
+.gridwrap { flex: 1; position: relative; min-height: 0; }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: none; display: block; }
+
+/* Onglets de feuilles + barre d'état */
+.sheets { display: flex; align-items: stretch; height: 26px; background: var(--chrome); border-top: 1px solid var(--chrome-line); flex: none; overflow: hidden; white-space: nowrap; }
+.sheets .nav { color: #a19f9d; padding: 0 10px; display: flex; align-items: center; letter-spacing: 8px; }
+.sheets .tab { padding: 0 14px; display: flex; align-items: center; color: var(--ink-soft); border-right: 1px solid #e1dfdd; }
+.sheets .tab.on { background: #fff; color: var(--xl-green); font-weight: 600; box-shadow: inset 0 -2px 0 var(--xl-green); }
+.sheets .plus { padding: 0 12px; display: flex; align-items: center; color: var(--ink-soft); font-size: 16px; }
+.status { display: flex; align-items: center; gap: 18px; height: 24px; background: var(--chrome); border-top: 1px solid #e1dfdd; padding-inline: 10px; flex: none; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden;
+  padding-bottom: env(safe-area-inset-bottom, 0px); }
+.hp { display: flex; align-items: center; gap: 6px; }
+.hpbar { width: 120px; height: 12px; border: 1px solid #c8c6c4; background: #fff; position: relative; }
+.hpbar b { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #63be7b, #b4dcc1); border-right: 1px solid #3f9b5d; transition: width .15s; }
+.hpbar.low b { background: linear-gradient(90deg, #f8696b, #fbc4c5); border-right-color: #c0392b; }
+.status .sp { flex: 1; }
+.status .zoom { color: var(--ink-soft); }
+
+/* Bandeau Mode protégé (écran de départ) */
+.protected { position: absolute; left: 0; right: 0; top: 0; background: var(--warn-bg); border-bottom: 1px solid var(--warn-line); display: flex; align-items: center; gap: 10px; padding: 7px 12px; font-size: 12px; flex-wrap: wrap; }
+.protected .tag { font-weight: 700; letter-spacing: .04em; }
+.btn { font: 12px var(--font-ui); border: 1px solid #8a8886; background: #fff; color: var(--ink); padding: 4px 14px; border-radius: 2px; cursor: pointer; }
+.btn:hover { background: #f3f2f1; }
+.btn.primary { background: var(--xl-green); border-color: var(--xl-green); color: #fff; }
+.btn.primary:hover { background: var(--xl-green-dark); }
+.btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+/* Commentaire (note) avec les commandes */
+.note { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -45%); width: min(360px, calc(100% - 32px)); background: #ffffe1; border: 1px solid #8a8886; box-shadow: 2px 3px 8px rgba(0,0,0,.18); padding: 10px 14px 12px; font: 13px/1.45 var(--font-cell); color: var(--ink); }
+.note::before { content: ""; position: absolute; left: -9px; top: -9px; border: 8px solid transparent; border-right-color: var(--err); border-top-color: var(--err); transform: rotate(0deg); }
+.note h2 { font: 700 13px var(--font-cell); margin: 0 0 6px; }
+.note table { border-collapse: collapse; width: 100%; }
+.note td { padding: 2px 0; vertical-align: top; }
+.note td:first-child { width: 42%; color: var(--ink-soft); }
+.note kbd { font: 11px var(--font-ui); border: 1px solid #c8c6c4; background: #fff; border-radius: 2px; padding: 0 4px; }
+.note .foot { margin-top: 8px; color: var(--ink-soft); font-size: 12px; }
+
+/* Boîte de dialogue Excel (K.O. / pause) */
+.veil { position: absolute; inset: 0; background: rgba(255,255,255,.35); display: grid; place-items: center; }
+.dialog { width: min(400px, calc(100% - 32px)); background: #fff; border: 1px solid #8a8886; box-shadow: 0 8px 28px rgba(0,0,0,.25); font: 12px var(--font-ui); }
+.dialog .dt { display: flex; justify-content: space-between; padding: 8px 12px; }
+.dialog .db { display: flex; gap: 14px; padding: 6px 18px 4px; }
+.okicon { background: var(--xl-green) !important; }
+.sheets .tab.locked { color: #a19f9d; }
+.erricon { width: 32px; height: 32px; border-radius: 50%; background: var(--err); color: #fff; display: grid; place-items: center; font: 700 18px var(--font-ui); flex: none; }
+.infoicon { background: #0f6cbd; }
+.dialog p { margin: 0 0 8px; line-height: 1.45; }
+.dialog table { border-collapse: collapse; font: 13px var(--font-cell); margin: 4px 0 6px; font-variant-numeric: tabular-nums; }
+.dialog td { border: 1px solid #d4d4d4; padding: 2px 10px; }
+.dialog td:last-child { text-align: right; min-width: 70px; }
+.dialog .df { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px 14px; }
+/* Feuille Upgrades (boutique) */
+.shop { position: absolute; inset: 0; background: var(--sheet); overflow: auto; }
+.xl { border-collapse: collapse; font: 13px var(--font-cell); font-variant-numeric: tabular-nums; }
+.xl th { background: var(--chrome); color: #444; font-weight: 400; border: 1px solid var(--chrome-line); height: 20px; padding: 0 4px; position: sticky; top: 0; z-index: 1; }
+.xl th.rn { position: sticky; left: 0; width: 34px; z-index: 0; }
+.xl th.corner { left: 0; z-index: 2; }
+.xl td { border: 1px solid #e1e1e1; height: 24px; padding: 0 8px; white-space: nowrap; }
+.xl td.num { text-align: right; }
+.xl .h1 { font-size: 18px; font-weight: 700; color: var(--xl-green-dark); height: 34px; }
+.xl .thead td { background: var(--xl-green); color: #fff; font-weight: 700; border-color: var(--xl-green); }
+.xl .band td { background: #e2efda; }
+.xl tr.row:hover td { outline: 1px solid var(--xl-green); outline-offset: -1px; }
+.xl .neg { color: var(--err); }
+.xl .bank { font-weight: 700; font-size: 15px; }
+.xl .databar { display: inline-block; vertical-align: middle; width: 80px; height: 14px; border: 1px solid #c8c6c4; background: #fff; position: relative; margin-right: 6px; }
+.xl .databar b { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #5b9bd5, #c5dcf0); }
+.xl button.btn { padding: 1px 12px; }
+.xl button.btn:disabled { opacity: .45; cursor: default; }
+.sheets .tab { cursor: pointer; }
+@media (max-width: 720px) {
+  .search, .autosave, .qa { display: none; }
+  .winbtns span { width: 34px; }
+}
+@media (prefers-reduced-motion: reduce) { .hpbar b { transition: none; } .tool.pop { animation: none; } }
+</style>
+
+<div class="app">
+  <div class="titlebar">
+    <div class="xl-logo">X</div>
+    <div class="autosave">AutoSave <span class="toggle"></span></div>
+    <div class="qa">💾 ↶ ↷</div>
+    <div class="doc-title">escape-controling.xlsx - Excel</div>
+    <div class="search">🔍 Search</div>
+    <div class="winbtns"><span>&#8211;</span><span>&#9633;</span><span class="close" id="closeBtn">&#10005;</span></div>
+  </div>
+  <div class="tabs">
+    <span class="file">File</span><span class="on">Home</span><span>Insert</span><span>Draw</span><span>Page Layout</span><span>Formulas</span><span>Data</span><span>Review</span><span>View</span><span>Help</span>
+  </div>
+  <div class="ribbon">
+    <div class="grp"><div class="body"><div class="big"><i>📋</i>Paste</div><div class="rows2"><div>✂</div><div>⧉</div></div></div><div class="lbl">Clipboard</div></div>
+    <div class="grp"><div class="body rows2">
+      <div><span class="combo" style="width:90px">Aptos Narrow</span><span class="combo">11</span></div>
+      <div><span class="tool" id="t-b" title="Bold: bonus to unlock"><b>B</b></span><span class="tool" id="t-i" title="Italic: bonus to unlock"><i>I</i></span><span class="tool" id="t-u" title="Underline: bonus to unlock"><u>U</u></span><span class="tool" id="t-fill" title="Fill Color: bonus to unlock">🪣</span><span class="tool" id="t-font" title="Font Color: bonus to unlock"><u style="text-decoration-color:#c00000">A</u></span></div>
+    </div><div class="lbl">Font</div></div>
+    <div class="grp"><div class="body rows2"><div>≡ ≡ ≡ &nbsp;⇥</div><div>⫷ ⫸ &nbsp;⊞ Merge</div></div><div class="lbl">Alignment</div></div>
+    <div class="grp"><div class="body rows2"><div><span class="combo" style="width:84px">General</span></div><div>$ &nbsp;% &nbsp;, &nbsp;.0 &nbsp;.00</div></div><div class="lbl">Number</div></div>
+    <div class="grp"><div class="body"><div class="big"><i>▦</i>Conditional<br>Formatting</div><div class="big"><i>▤</i>Format as<br>Table</div></div><div class="lbl">Styles</div></div>
+    <div class="grp"><div class="body"><div class="big"><i>⊕</i>Insert</div><div class="big"><i>⊖</i>Delete</div></div><div class="lbl">Cells</div></div>
+    <div class="grp"><div class="body rows2"><div><span class="tool" id="t-sum" title="AutoSum: bonus to unlock">Σ</span> AutoSum</div><div><span class="tool" id="t-down">⇩</span> Fill</div></div><div class="lbl">Editing</div></div>
+  </div>
+  <div class="fbar">
+    <div class="namebox" id="namebox">M20</div>
+    <div class="fx-icons">✕✓<i>fx</i></div>
+    <div class="fx" id="fx"></div>
+  </div>
+  <div class="gridwrap" id="gridwrap">
+    <canvas id="cv"></canvas>
+    <div id="titleUi">
+      <div class="protected">
+        <span class="tag">ⓘ PROTECTED VIEW</span>
+        <span>Be careful: this file contains hostile formulas. Unless you need to edit, it's safer to stay in Protected View.</span>
+        <button class="btn" id="startBtn">Enable Editing</button>
+      </div>
+      <div class="note">
+        <h2>Financial Controller:</h2>
+        <table>
+          <tr><td>Move</td><td><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> (or WASD / ZQSD)</td></tr>
+          <tr><td>Aim</td><td>mouse, firing is automatic</td></tr>
+          <tr><td>Goal</td><td>survive, then beat the boss to close the sheet; reports are walls</td></tr>
+          <tr><td>Bonuses</td><td>formulas drop ribbon tools (B, I, U…), walk over them</td></tr>
+          <tr><td>Pause</td><td><kbd>P</kbd> or <kbd>Esc</kbd></td></tr>
+          <tr><td>Start</td><td><kbd>Enter</kbd></td></tr>
+        </table>
+        <div class="foot" id="bestLine">Formulas come in waves. Don't let them touch you.</div>
+        <div class="foot"><button class="btn" id="shopBtn1">Spend gold on Upgrades</button></div>
+      </div>
+    </div>
+    <div class="veil" id="pauseUi" hidden>
+      <div class="dialog" role="dialog" aria-label="Paused">
+        <div class="dt"><span>Microsoft Excel</span><span>✕</span></div>
+        <div class="db"><div class="erricon infoicon">i</div><div><p>Calculation paused. The workbook is waiting for you.</p></div></div>
+        <div class="df"><button class="btn primary" id="resumeBtn">Resume</button></div>
+      </div>
+    </div>
+    <div class="veil" id="overUi" hidden>
+      <div class="dialog" role="dialog" aria-label="K.O.">
+        <div class="dt"><span>Microsoft Excel</span><span>✕</span></div>
+        <div class="db"><div class="erricon">✕</div><div>
+          <p><b>#K.O.!</b> The financial controller did not survive month-end close.</p>
+          <table id="overTable"></table>
+        </div></div>
+        <div class="df"><button class="btn" id="shopBtn2">Upgrades</button><button class="btn primary" id="retryBtn">Try Again</button></div>
+      </div>
+    </div>
+    <div class="veil" id="wonUi" hidden>
+      <div class="dialog" role="dialog" aria-label="Sheet closed">
+        <div class="dt"><span>Microsoft Excel</span><span>✕</span></div>
+        <div class="db"><div class="erricon okicon">✓</div><div>
+          <p id="wonText"></p>
+          <table id="wonTable"></table>
+        </div></div>
+        <div class="df"><button class="btn" id="shopBtn3">Upgrades</button><button class="btn primary" id="nextBtn">Next sheet</button></div>
+      </div>
+    </div>
+    <div class="shop" id="shopUi" hidden></div>
+  </div>
+  <div class="sheets">
+    <span class="nav">◀ ▶</span>
+    <span id="levelTabs" style="display:flex"></span><span class="tab" id="tabShop">Upgrades</span><span class="tab" id="tabLocked">DO NOT TOUCH</span>
+    <span class="plus">⊕</span>
+  </div>
+  <div class="status">
+    <span class="hp">HP <span class="hpbar" id="hpbar"><b id="hpfill" style="width:100%"></b></span> <span id="hptext">100/100</span></span>
+    <span id="st-score">Score: 0</span>
+    <span id="st-gold">Gold: 0</span>
+    <span id="st-time">Time: 0:00</span>
+    <span id="st-wave">Wave: 1</span>
+    <span class="sp"></span>
+    <span class="zoom">▦ ▣ ▥ &nbsp; − ──●── + &nbsp;100 %</span>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------- Constantes de la feuille ----------
+  const CW = 64, CH = 20;       // taille d'une cellule Excel par défaut
+  const HW = 42, HH = 20;       // en-têtes de lignes / colonnes
+  const COLS = 52, ROWS = 166;  // feuille bornée : A à AZ, et autant de pixels en hauteur
+  const WW = COLS * CW, WH = ROWS * CH;
+  const START_COL = 25, START_ROW = 82;
+
+  // ---------- Niveaux : une feuille par niveau ----------
+  const LEVELS = [
+    { name: "Sheet1",                  reports: 0,  charts: 0, dur: 120, diff: 0 },
+    { name: "Budget_2027",             reports: 14, charts: 2, dur: 120, diff: 20 },
+    { name: "P&L_Q3",                  reports: 22, charts: 3, dur: 150, diff: 40 },
+    { name: "Cash_Flow",               reports: 30, charts: 4, dur: 150, diff: 60 },
+    { name: "Consolidation_FINAL_v12", reports: 40, charts: 5, dur: 180, diff: 85 },
+  ];
+  // Faux reportings qui servent de murs
+  const TEMPLATES = [
+    { title: "P&L Q3 2027 (k$)",   head: ["", "Budget", "Actual", "Var", "Var %"], rows: ["Revenue", "COGS", "Gross margin", "Opex", "EBITDA", "D&A", "EBIT"], kind: "var" },
+    { title: "Cash flow H1 (k$)",  head: ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun"], rows: ["Opening cash", "Receipts", "Payments", "Closing cash"], kind: "series" },
+    { title: "Headcount by dept",  head: ["", "FTE", "Budget", "Gap"], rows: ["Finance", "Sales", "IT", "HR", "Ops"], kind: "gap", total: true },
+    { title: "AR aging (k$)",      head: ["Client", "0-30", "31-60", "61-90", ">90"], rows: ["Acme Corp", "Globex", "Initech", "Umbrella", "Stark Ind."], kind: "series", total: true },
+    { title: "Capex tracker (k$)", head: ["Project", "Budget", "Spent", "Left"], rows: ["ERP v2", "New office", "Servers", "Fleet"], kind: "left", total: true },
+    { title: "KPI dashboard",      head: ["KPI", "Target", "Actual"], rows: ["DSO (days)", "DPO (days)", "Margin %", "Churn %", "NPS"], kind: "kpi" },
+    { title: "Opex by nature (k$)", head: ["", "FY26", "FY27", "Var"], rows: ["Salaries", "Rent", "Travel", "IT licences", "Consulting", "Coffee"], kind: "gap", total: true },
+    { title: "Sales by region (k$)", head: ["Region", "Q1", "Q2", "Q3", "Q4"], rows: ["EMEA", "North America", "LATAM", "APAC"], kind: "series", total: true },
+  ];
+  const CHART_TITLES = ["Revenue vs Budget", "EBITDA by quarter", "Cash position", "Headcount trend", "Opex vs Forecast"];
+  const TABLE_STYLES = [
+    { head: "#4472c4", band: "#d9e1f2", line: "#8ea9db" },
+    { head: "#70ad47", band: "#e2efda", line: "#a9d08e" },
+    { head: "#ed7d31", band: "#fce4d6", line: "#f4b084" },
+    { head: "#7f7f7f", band: "#ededed", line: "#bfbfbf" },
+  ];
+
+  // ---------- Ennemis : les fonctions Excel ----------
+  const TYPES = {
+    SUM:        { label: "=SUM()",      color: "#2f5597", hp: 3,  speed: 55, dmg: 8,  pts: 10, gold: 1, font: 13, unlock: 0,
+                  formulas: ["=SUM(B2:B48)", "=SUM(Expenses!C:C)", "=SUM(Budget_2027)"] },
+    IF:         { label: "=IF()",         color: "#c55a11", hp: 2,  speed: 95, dmg: 6,  pts: 15, gold: 2, font: 13, unlock: 20,
+                  formulas: ['=IF(C4>0,"OK","KO")', '=IF(ISERROR(D2),0,D2)', '=IF(A1="","",A1*1.2)'] },
+    COUNTIF:    { label: "=COUNTIF()",      color: "#7030a0", hp: 5,  speed: 70, dmg: 10, pts: 25, gold: 3, font: 13, unlock: 45, wobble: true,
+                  formulas: ['=COUNTIF(A:A,"Overdue")', '=COUNTIF(Invoices,">10000")'] },
+    VLOOKUP:    { label: "=VLOOKUP()", color: "#c00000", hp: 14, speed: 32, dmg: 20, pts: 60, gold: 6, font: 15, unlock: 75,
+                  formulas: ["=VLOOKUP(A2,Data!A:Z,14,FALSE)", "=VLOOKUP(player,Sheet1!A:XFD,2,FALSE)"] },
+    PY:         { label: "=PY()",       color: "#3776ab", hp: 6,  speed: 50, dmg: 8,  pts: 35, gold: 4, font: 13, unlock: 55, ranged: true,
+                  formulas: ['=PY("df.describe()")', '=PY("import pandas as pd")', '=PY("xl(\'A1:Z999\').plot()")'] },
+  };
+  const WEIGHTS = { SUM: 5, IF: 3, COUNTIF: 2, VLOOKUP: 1, PY: 1.5 };
+  // Un boss par feuille : il arrive 30 s avant la clôture, la feuille se ferme quand il tombe
+  const BOSSES = [
+    { label: "=INDEX(MATCH())", color: "#7f6000", formula: "=INDEX(B:B,MATCH(player,A:A,0))" },
+    { label: "=SUMIFS()",       color: "#2f5597", formula: '=SUMIFS(Budget,Dept,"Finance",Year,2027)' },
+    { label: "=XLOOKUP()",      color: "#c00000", formula: '=XLOOKUP(player,A:A,B:B,"#N/A",0,-1)' },
+    { label: "=INDIRECT()",     color: "#7030a0", formula: '=INDIRECT("Sheet"&RANDBETWEEN(1,99)&"!A1")' },
+    { label: "=LAMBDA()",       color: "#000000", formula: "=LAMBDA(x,LAMBDA(y,x(x(y))))(controller)" },
+  ];
+  const BOSS_LEAD = 30;
+  const MAGNET = 70;
+  const ERRORS = ["#N/A", "#REF!", "#VALUE!", "#DIV/0!", "#NAME?", "#NULL!"];
+  const DROP_CHANCE = { SUM: 0.06, IF: 0.07, COUNTIF: 0.12, VLOOKUP: 0.4, PY: 0.2 };
+
+  // ---------- Bonus : les outils du ruban ----------
+  const MAX_LV = 5;
+  const BONUS = {
+    b:    { name: "Bold",       glyph: "B", style: "700", tool: "t-b",    desc: "bigger, stronger shots" },
+    i:    { name: "Italic",     glyph: "I", style: "italic 400", tool: "t-i", desc: "+2 angled shots" },
+    u:    { name: "Underline",  glyph: "U", style: "400", underline: true, tool: "t-u", desc: "shots pierce +1 formula" },
+    fill: { name: "Fill Color", glyph: "🪣", style: "400", tool: "t-fill", desc: "highlighted cells around you burn formulas" },
+    font: { name: "Font Color", glyph: "A", style: "700", color: "#c00000", underline: true, tool: "t-font", desc: "+15% chance of red x3 critical hit" },
+    sum:  { name: "AutoSum",    glyph: "Σ", style: "400", tool: "t-sum",  desc: "periodic Σ shockwave around you" },
+    down: { name: "Fill Down",  glyph: "⇩", style: "400", tool: "t-down", desc: "+18% fire rate" },
+  };
+  // ---------- Améliorations permanentes (boutique) ----------
+  const UPGRADES = [
+    { id: "hp",    name: "Max HP",         desc: "+15 max HP",                 max: 8, base: 15, growth: 1.55 },
+    { id: "dmg",   name: "Damage",         desc: "+15% shot damage",           max: 8, base: 20, growth: 1.6 },
+    { id: "rate",  name: "Fire rate",      desc: "+8% shots per second",       max: 8, base: 20, growth: 1.6 },
+    { id: "spd",   name: "Move speed",     desc: "+6% move speed",             max: 5, base: 15, growth: 1.6 },
+    { id: "regen", name: "Regeneration",   desc: "+0.4 HP per second",         max: 5, base: 30, growth: 1.7 },
+    { id: "gold",  name: "Interest rate",  desc: "+10% gold from formulas",    max: 5, base: 40, growth: 1.8 },
+    { id: "tpl",   name: "Template",       desc: "start with 1 random tool",   max: 3, base: 60, growth: 2.2 },
+  ];
+  const cost = (u, l) => Math.round(u.base * Math.pow(u.growth, l));
+
+  const HEAL = { name: "Undo", glyph: "↶", style: "700", color: "#217346", desc: "restores 25 HP" };
+
+  // ---------- DOM ----------
+  const $ = id => document.getElementById(id);
+  const cv = $("cv"), ctx = cv.getContext("2d"), wrap = $("gridwrap");
+  let W = 0, H = 0, DPR = 1;
+  function resize() {
+    DPR = window.devicePixelRatio || 1;
+    W = wrap.clientWidth; H = wrap.clientHeight;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  }
+  new ResizeObserver(resize).observe(wrap); resize();
+
+  // ---------- Sauvegarde locale ----------
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("escape-controling." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("escape-controling." + k, JSON.stringify(v)); } catch {} },
+  };
+  let bank = store.get("gold", 0), best = store.get("best", 0);
+  let unlocked = store.get("unlocked", 0), cur = Math.min(store.get("level", 0), unlocked);
+  const up = Object.assign({ hp: 0, dmg: 0, rate: 0, spd: 0, regen: 0, gold: 0, tpl: 0 }, store.get("upgrades", {}));
+  function showBest() {
+    if (best > 0) $("bestLine").textContent = `Best score: ${best.toLocaleString("en-US")} · Gold in bank: ${bank.toLocaleString("en-US")}`;
+  }
+  showBest();
+
+  // ---------- Utilitaires ----------
+  function colName(c) { let s = ""; c++; while (c > 0) { const m = (c - 1) % 26; s = String.fromCharCode(65 + m) + s; c = Math.floor((c - 1) / 26); } return s; }
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const pick = arr => arr[(Math.random() * arr.length) | 0];
+  const fmtTime = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+
+  // ---------- État ----------
+  let state = "title", G;
+  const keys = new Set();
+  const mouse = { x: 0, y: 0, inside: false };
+
+  function newGame() {
+    const maxHp = 100 + 15 * up.hp;
+    G = {
+      level: cur, L: LEVELS[cur], map: levelMap(cur), flowCell: -1,
+      t: 0, score: 0, gold: 0, kills: 0, spawnT: 1.2, fireT: 0,
+      p: { x: START_COL * CW + CW / 2, y: START_ROW * CH + CH / 2, hp: maxHp, maxHp, speed: 170 * (1 + 0.06 * up.spd), inv: 0,
+           fireEvery: 0.45 / (1 + 0.08 * up.rate), bulletDmg: 1 + 0.15 * up.dmg, regen: 0.4 * up.regen, bulletSpeed: 430, bulletSize: 4,
+           lv: { b: 0, i: 0, u: 0, fill: 0, font: 0, sum: 0, down: 0 } },
+      cam: { x: 0, y: 0 },
+      enemies: [], bullets: [], shots: [], floats: [], drops: [], waves: [], sumT: 0, boss: null, bossDone: false,
+      lastFormula: "", goldF: 0,
+    };
+    for (let i = 0; i < up.tpl; i++) {
+      const open = Object.keys(BONUS).filter(k => G.p.lv[k] < MAX_LV);
+      G.p.lv[pick(open)]++;
+    }
+    centerCam(true);
+    updateFlow();
+  }
+
+  // ---------- Génération des feuilles ----------
+  function mulberry(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  const mapCache = {};
+  function levelMap(n) {
+    if (mapCache[n]) return mapCache[n];
+    const L = LEVELS[n], rng = mulberry(n * 9973 + 17);
+    const ri = (a, b) => Math.floor(a + rng() * (b - a + 1));
+    const solid = new Uint8Array(COLS * ROWS), objs = [];
+    const free = (c, r, w, h) => {
+      const mc = 2, mr = 2;
+      if (c - 1 < 0 || r - 1 < 0 || c + w + 1 > COLS || r + h + 1 > ROWS) return false;
+      if (Math.abs(c + w / 2 - START_COL) < w / 2 + 3 && Math.abs(r + h / 2 - START_ROW) < h / 2 + 5) return false;
+      for (let x = c - mc; x < c + w + mc; x++) for (let y = r - mr; y < r + h + mr; y++)
+        if (x >= 0 && y >= 0 && x < COLS && y < ROWS && solid[y * COLS + x]) return false;
+      return true;
+    };
+    const place = (o) => {
+      for (let k = 0; k < 600; k++) {
+        const c = ri(1, COLS - o.w - 2), r = ri(1, ROWS - o.h - 2);
+        if (free(c, r, o.w, o.h)) {
+          o.c = c; o.r = r; objs.push(o);
+          for (let x = c; x < c + o.w; x++) for (let y = r; y < r + o.h; y++) solid[y * COLS + x] = 1;
+          return;
+        }
+      }
+    };
+    const fmtN = v => v < 0 ? `(${Math.abs(Math.round(v)).toLocaleString("en-US")})` : Math.round(v).toLocaleString("en-US");
+    for (let i = 0; i < L.reports; i++) {
+      const T = TEMPLATES[ri(0, TEMPLATES.length - 1)];
+      const nv = T.head.length - 1;
+      let labels = T.rows.slice(0, ri(Math.min(3, T.rows.length), T.rows.length));
+      const rows = labels.map(lab => {
+        let v;
+        if (T.kind === "var") { const b = ri(200, 5000), a = b * (0.8 + rng() * 0.4); v = [b, a, a - b, (a - b) / b]; }
+        else if (T.kind === "gap") { const a = ri(5, 900), b = Math.round(a * (0.85 + rng() * 0.3)); v = [a, b, a - b]; }
+        else if (T.kind === "left") { const b = ri(100, 4000), sp = Math.round(b * rng() * 1.2); v = [b, sp, b - sp]; }
+        else if (T.kind === "kpi") { v = [ri(5, 90), ri(5, 90)]; }
+        else { v = Array.from({ length: nv }, () => ri(50, 3000) * (/Payments/.test(lab) ? -1 : 1)); }
+        return [lab, ...v];
+      });
+      if (T.total) rows.push(["Total", ...Array.from({ length: nv }, (_, j) => rows.reduce((s, r) => s + r[j + 1], 0))]);
+      const cells = rows.map(r => [r[0], ...r.slice(1).map((v, j) => ({
+        text: T.kind === "var" && j === 3 ? (v * 100).toFixed(1) + "%" : fmtN(v),
+        neg: v < 0,
+      }))]);
+      place({ kind: "table", title: T.title, head: T.head, cells, total: !!T.total, st: TABLE_STYLES[ri(0, 3)], w: 2 + nv, h: 2 + cells.length });
+    }
+    for (let i = 0; i < L.charts; i++)
+      place({ kind: "chart", title: CHART_TITLES[ri(0, CHART_TITLES.length - 1)], bars: Array.from({ length: 4 }, () => [0.3 + rng() * 0.7, 0.3 + rng() * 0.7]), w: 5, h: 11 });
+    return mapCache[n] = { solid, objs };
+  }
+
+  // ---------- Murs et chemins ----------
+  const isSolid = (c, r) => c < 0 || r < 0 || c >= COLS || r >= ROWS || G.map.solid[r * COLS + c] === 1;
+  function blocked(x, y, hw, hh) {
+    if (x - hw < 0 || y - hh < 0 || x + hw > WW || y + hh > WH) return true;
+    const c0 = Math.floor((x - hw) / CW), c1 = Math.floor((x + hw - 0.01) / CW);
+    const r0 = Math.floor((y - hh) / CH), r1 = Math.floor((y + hh - 0.01) / CH);
+    for (let c = c0; c <= c1; c++) for (let r = r0; r <= r1; r++) if (isSolid(c, r)) return true;
+    return false;
+  }
+  function moveBox(o, dx, dy, hw, hh) {
+    o.x += dx; if (blocked(o.x, o.y, hw, hh)) o.x -= dx;
+    o.y += dy; if (blocked(o.x, o.y, hw, hh)) o.y -= dy;
+  }
+  const dist = new Int32Array(COLS * ROWS);
+  const queue = new Int32Array(COLS * ROWS);
+  function updateFlow() {
+    const pc = Math.floor(G.p.x / CW), pr = Math.floor(G.p.y / CH), start = pr * COLS + pc;
+    if (start === G.flowCell) return;
+    G.flowCell = start;
+    dist.fill(-1); dist[start] = 0;
+    let qh = 0, qt = 0; queue[qt++] = start;
+    while (qh < qt) {
+      const i = queue[qh++], c = i % COLS, r = (i / COLS) | 0, d = dist[i] + 1;
+      if (c > 0 && dist[i - 1] < 0 && !G.map.solid[i - 1]) { dist[i - 1] = d; queue[qt++] = i - 1; }
+      if (c < COLS - 1 && dist[i + 1] < 0 && !G.map.solid[i + 1]) { dist[i + 1] = d; queue[qt++] = i + 1; }
+      if (r > 0 && dist[i - COLS] < 0 && !G.map.solid[i - COLS]) { dist[i - COLS] = d; queue[qt++] = i - COLS; }
+      if (r < ROWS - 1 && dist[i + COLS] < 0 && !G.map.solid[i + COLS]) { dist[i + COLS] = d; queue[qt++] = i + COLS; }
+    }
+  }
+  // Direction à suivre pour un ennemi : vers le joueur, en contournant les reportings
+  function steer(e) {
+    const p = G.p, c = Math.floor(e.x / CW), r = Math.floor(e.y / CH);
+    if (c < 0 || r < 0 || c >= COLS || r >= ROWS) return [p.x, p.y];
+    const d0 = dist[r * COLS + c];
+    if (d0 >= 0 && d0 <= 2) return [p.x, p.y];
+    let bc = c, br = r, bd = d0 < 0 ? 1e9 : d0;
+    for (let dc = -1; dc <= 1; dc++) for (let dr = -1; dr <= 1; dr++) {
+      if (!dc && !dr) continue;
+      const nc = c + dc, nr = r + dr;
+      if (isSolid(nc, nr)) continue;
+      if (dc && dr && (isSolid(c + dc, r) || isSolid(c, r + dr))) continue;
+      const d = dist[nr * COLS + nc];
+      if (d >= 0 && d < bd) { bd = d; bc = nc; br = nr; }
+    }
+    if (bc === c && br === r) return [p.x, p.y];
+    return [bc * CW + CW / 2, br * CH + CH / 2];
+  }
+
+  function centerCam(snap) {
+    const vw = W - HW, vh = H - HH;
+    const tx = Math.max(0, Math.min(WW - vw, G.p.x - vw / 2)), ty = Math.max(0, Math.min(WH - vh, G.p.y - vh / 2));
+    if (snap) { G.cam.x = tx; G.cam.y = ty; }
+    else { G.cam.x += (tx - G.cam.x) * 0.15; G.cam.y += (ty - G.cam.y) * 0.15; }
+  }
+
+  // ---------- Ennemis ----------
+  function measure(type) {
+    ctx.font = `600 ${type.font}px ${getComputedStyle(document.body).getPropertyValue("--font-cell")}`;
+    return ctx.measureText(type.label).width + 14;
+  }
+  const widthCache = {};
+  function spawnEnemy() {
+    const te = G.t + G.L.diff;
+    const avail = Object.keys(TYPES).filter(k => te >= TYPES[k].unlock);
+    let total = avail.reduce((s, k) => s + WEIGHTS[k], 0), r = Math.random() * total, key = avail[0];
+    for (const k of avail) { r -= WEIGHTS[k]; if (r <= 0) { key = k; break; } }
+    const ty = TYPES[key];
+    const w = widthCache[key] ||= measure(ty), h = ty.font + 10;
+    const vw = W - HW, vh = H - HH, m = 40, ext = 320;
+    let x, y, ok = false;
+    for (let i = 0; i < 40 && !ok; i++) {
+      x = rand(G.cam.x - ext, G.cam.x + vw + ext); y = rand(G.cam.y - ext, G.cam.y + vh + ext);
+      const inView = x > G.cam.x - m && x < G.cam.x + vw + m && y > G.cam.y - m && y < G.cam.y + vh + m;
+      if (inView || blocked(x, y, w / 2, h / 2)) continue;
+      ok = dist[Math.floor(y / CH) * COLS + Math.floor(x / CW)] >= 0;
+    }
+    if (!ok) return;
+    const hpScale = 1 + Math.floor(te / 90) * 0.35;
+    G.enemies.push({ key, ty, x, y, w, h, hp: ty.hp * hpScale, maxHp: ty.hp * hpScale, flash: 0, phase: Math.random() * 6.28,
+                     formula: pick(ty.formulas), shootT: rand(1, 2.5), stuckT: 0, ghost: 0 });
+  }
+
+  function spawnBoss() {
+    const B = BOSSES[G.level], lvl = G.level;
+    const ty = { label: B.label, color: B.color, hp: 0, speed: 38 + 4 * lvl, dmg: 25, pts: 500 * (lvl + 1), gold: 25 + 15 * lvl, font: 24, boss: true };
+    ctx.font = `700 24px ${fontCell}`;
+    const w = ctx.measureText(B.label).width + 28, h = 40;
+    const ang = Math.random() * Math.PI * 2, R = Math.max(W, H) * 0.6;
+    const x = Math.max(w, Math.min(WW - w, G.p.x + Math.cos(ang) * R)), y = Math.max(h, Math.min(WH - h, G.p.y + Math.sin(ang) * R));
+    const hp = 90 * (1 + 0.8 * lvl);
+    const e = { key: "BOSS", ty, x, y, w, h, hp, maxHp: hp, flash: 0, phase: 0, formula: B.formula, shootT: 2.5, boss: true, stuckT: 0, ghost: 0 };
+    G.enemies.push(e); G.boss = e;
+    G.lastFormula = `${B.formula}   ← boss incoming! Defeat it to close the sheet`;
+    G.floats.push({ x: G.p.x, y: G.p.y - 40, text: `${B.label} is coming!`, color: "#c00000", life: 2.2, bold: true });
+  }
+
+  // ---------- Boucle ----------
+  function update(dt) {
+    G.t += dt;
+    const p = G.p;
+
+    // Déplacement
+    let dx = 0, dy = 0;
+    if (keys.has("arrowleft") || keys.has("q") || keys.has("a")) dx -= 1;
+    if (keys.has("arrowright") || keys.has("d")) dx += 1;
+    if (keys.has("arrowup") || keys.has("z") || keys.has("w")) dy -= 1;
+    if (keys.has("arrowdown") || keys.has("s")) dy += 1;
+    if (dx || dy) { const l = Math.hypot(dx, dy); moveBox(p, dx / l * p.speed * dt, dy / l * p.speed * dt, 6, 9); }
+    centerCam(false);
+    updateFlow();
+    if (!G.boss && !G.bossDone && G.t >= G.L.dur - BOSS_LEAD) spawnBoss();
+    if (G.bossDone) { G.closeT = (G.closeT || 0) + dt; if (G.closeT > 1.2) { levelComplete(); return; } }
+    p.inv = Math.max(0, p.inv - dt);
+    if (p.regen) p.hp = Math.min(p.maxHp, p.hp + p.regen * dt);
+
+    // Tir automatique vers la souris
+    const lv = p.lv;
+    G.fireT -= dt;
+    if (G.fireT <= 0) {
+      G.fireT = p.fireEvery * Math.pow(0.82, lv.down);
+      const tx = mouse.x - HW + G.cam.x, ty = mouse.y - HH + G.cam.y;
+      const base = Math.atan2(ty - p.y, tx - p.x) || 0;
+      const n = 1 + 2 * lv.i, step = 0.16;
+      for (let k = 0; k < n; k++) {
+        const a = base + (k - (n - 1) / 2) * step;
+        const crit = Math.random() < 0.15 * lv.font;
+        G.bullets.push({ x: p.x, y: p.y, vx: Math.cos(a) * p.bulletSpeed, vy: Math.sin(a) * p.bulletSpeed, life: 1.4,
+                         dmg: (p.bulletDmg + 0.6 * lv.b) * (crit ? 3 : 1), r: p.bulletSize + 1.6 * lv.b,
+                         pierce: lv.u, hit: new Set(), crit, ang: a });
+      }
+    }
+
+    // Remplissage : cellules surlignées autour du joueur qui brûlent les formules
+    if (lv.fill) {
+      const R = fillRadius(lv.fill), dps = 1.5 * lv.fill;
+      for (const e of G.enemies) {
+        if (e.hp > 0 && Math.hypot(e.x - p.x, e.y - p.y) < R) { e.hp -= dps * dt; e.burn = 0.15; if (e.hp <= 0) kill(e); }
+      }
+    }
+
+    // Somme automatique : onde de choc périodique
+    if (lv.sum) {
+      G.sumT -= dt;
+      if (G.sumT <= 0) {
+        G.sumT = Math.max(2.2, 6 - lv.sum * 0.75);
+        const R = 130 + 30 * lv.sum, dmg = 3 + 1.5 * lv.sum;
+        G.waves.push({ x: p.x, y: p.y, R, t: 0 });
+        for (const e of G.enemies) {
+          if (e.hp > 0 && Math.hypot(e.x - p.x, e.y - p.y) < R) { e.hp -= dmg; e.flash = 0.15; if (e.hp <= 0) kill(e); }
+        }
+      }
+    }
+    for (const w of G.waves) w.t += dt;
+    G.waves = G.waves.filter(w => w.t < 0.45);
+
+    // Ramassage des bonus
+    for (const d of G.drops) {
+      d.life -= dt;
+      const dd = Math.hypot(d.x - p.x, d.y - p.y);
+      if (dd < MAGNET) { const k = Math.min(1, 380 * dt / (dd || 1)); d.x += (p.x - d.x) * k; d.y += (p.y - d.y) * k; }
+      if (dd < 20) { collect(d); d.life = 0; }
+    }
+    G.drops = G.drops.filter(d => d.life > 0);
+
+    // Apparition des vagues
+    G.spawnT -= dt;
+    if (G.spawnT <= 0) {
+      const te = G.t + G.L.diff;
+      G.spawnT = Math.max(0.22, 1.3 - te * 0.011) * (G.boss ? 1.6 : 1);
+      const n = 1 + Math.floor(te / 60);
+      for (let i = 0; i < n; i++) spawnEnemy();
+    }
+
+    // Projectiles
+    for (const b of G.bullets) {
+      b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+      const bo = G.boss && !G.boss.dead && Math.abs(b.x - G.boss.x) < G.boss.w / 2 && Math.abs(b.y - G.boss.y) < G.boss.h / 2;
+      if (!bo && isSolid(Math.floor(b.x / CW), Math.floor(b.y / CH))) b.life = 0;
+    }
+
+    // Ennemis : poursuite + séparation douce
+    const E = G.enemies;
+    for (const e of E) {
+      const ox0 = e.x, oy0 = e.y, pd = Math.hypot(p.x - e.x, p.y - e.y);
+      let ax, ay;
+      if (e.boss) { ax = p.x - e.x; ay = p.y - e.y; }           // le boss traverse les reportings
+      else { const [gx, gy] = steer(e); ax = gx - e.x; ay = gy - e.y; }
+      const l = Math.hypot(ax, ay) || 1; ax /= l; ay /= l;
+      if (e.ty.wobble) { e.phase += dt * 5; const s = Math.sin(e.phase) * 0.8; const ox = -ay * s, oy = ax * s; ax += ox; ay += oy; }
+      let sp = e.ty.speed;
+      if (e.ty.ranged && pd < 230) sp = 0;                       // =PY() garde ses distances pour tirer
+      if (e.boss) { e.x += ax * sp * dt; e.y += ay * sp * dt; e.x = Math.max(e.w / 2, Math.min(WW - e.w / 2, e.x)); e.y = Math.max(e.h / 2, Math.min(WH - e.h / 2, e.y)); }
+      else moveBox(e, ax * sp * dt, ay * sp * dt, e.w / 2, e.h / 2);
+      // Détection d'un ennemi coincé : il devient « fantôme » et traverse les autres formules un moment
+      if (sp > 0 && !e.boss) {
+        const moved = Math.hypot(e.x - ox0, e.y - oy0);
+        e.stuckT = moved < sp * dt * 0.35 ? e.stuckT + dt : Math.max(0, e.stuckT - dt * 2);
+        if (e.stuckT > 0.5) { e.ghost = 1.5; e.stuckT = 0; }
+      }
+      e.ghost = Math.max(0, e.ghost - dt);
+      // Tirs à distance (=PY() et boss)
+      if (e.ty.ranged || e.boss) {
+        e.shootT -= dt;
+        if (e.shootT <= 0 && pd < 700) {
+          if (e.boss) {
+            e.shootT = Math.max(1.6, 3.2 - 0.3 * G.level);
+            const n = 8 + 2 * G.level, a0 = Math.random() * 6.28;
+            for (let k = 0; k < n; k++) { const a = a0 + k * Math.PI * 2 / n; G.shots.push({ x: e.x, y: e.y, vx: Math.cos(a) * 170, vy: Math.sin(a) * 170, life: 4, dmg: 12, boss: true }); }
+          } else {
+            e.shootT = 2.6;
+            G.shots.push({ x: e.x, y: e.y, vx: (p.x - e.x) / pd * 200, vy: (p.y - e.y) / pd * 200, life: 3, dmg: e.ty.dmg });
+          }
+        }
+      }
+      e.flash = Math.max(0, e.flash - dt);
+      e.burn = Math.max(0, (e.burn || 0) - dt);
+    }
+    for (let i = 0; i < E.length; i++) for (let j = i + 1; j < E.length; j++) {
+      const a = E[i], b = E[j];
+      if (a.ghost > 0 || b.ghost > 0 || a.boss || b.boss) continue;
+      const ox = (a.w + b.w) / 2 - Math.abs(a.x - b.x), oy = (a.h + b.h) / 2 - Math.abs(a.y - b.y);
+      // On tolère un chevauchement partiel et on pousse doucement : plus de bouchons dans les entonnoirs
+      if (ox > a.w * 0.35 && oy > 0) {
+        const push = 50 * dt;
+        if (ox < oy) { const s = (a.x < b.x ? -1 : 1) * Math.min(ox, push) / 2; moveBox(a, s, 0, a.w / 2, a.h / 2); moveBox(b, -s, 0, b.w / 2, b.h / 2); }
+        else { const s = (a.y < b.y ? -1 : 1) * Math.min(oy, push) / 2; moveBox(a, 0, s, a.w / 2, a.h / 2); moveBox(b, 0, -s, b.w / 2, b.h / 2); }
+      }
+    }
+
+    // Projectiles ennemis
+    for (const s of G.shots) {
+      s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
+      if (isSolid(Math.floor(s.x / CW), Math.floor(s.y / CH))) s.life = 0;
+      else if (p.inv <= 0 && Math.abs(s.x - p.x) < 9 && Math.abs(s.y - p.y) < 11) {
+        s.life = 0; p.hp -= s.dmg; p.inv = 0.5;
+        G.floats.push({ x: p.x, y: p.y - 20, text: `-${s.dmg} HP`, color: "#c42b1c", life: 0.9 });
+        if (p.hp <= 0) { p.hp = 0; gameOver(); return; }
+      }
+    }
+    G.shots = G.shots.filter(s => s.life > 0);
+
+    // Collisions projectiles / ennemis
+    for (const b of G.bullets) {
+      if (b.life <= 0) continue;
+      for (const e of E) {
+        if (e.hp <= 0 || b.hit.has(e)) continue;
+        if (Math.abs(b.x - e.x) < e.w / 2 + b.r && Math.abs(b.y - e.y) < e.h / 2 + b.r) {
+          e.hp -= b.dmg; e.flash = 0.1; b.hit.add(e);
+          if (b.crit) G.floats.push({ x: e.x, y: e.y - e.h, text: "x3", color: "#c00000", life: 0.5, bold: true });
+          if (e.hp <= 0) kill(e);
+          if (b.pierce-- <= 0) { b.life = 0; break; }
+        }
+      }
+    }
+
+    // Collisions joueur / ennemis
+    if (p.inv <= 0) {
+      for (const e of E) {
+        if (e.hp > 0 && Math.abs(p.x - e.x) < e.w / 2 + 6 && Math.abs(p.y - e.y) < e.h / 2 + 8) {
+          p.hp -= e.ty.dmg; p.inv = 0.7;
+          G.floats.push({ x: p.x, y: p.y - 20, text: `-${e.ty.dmg} HP`, color: "#c42b1c", life: 0.9 });
+          G.lastFormula = e.formula + "   ← hit you";
+          if (p.hp <= 0) { p.hp = 0; gameOver(); }
+          break;
+        }
+      }
+    }
+
+    G.enemies = E.filter(e => e.hp > 0);
+    G.bullets = G.bullets.filter(b => b.life > 0);
+    for (const f of G.floats) { f.life -= dt; f.y -= 22 * dt; }
+    G.floats = G.floats.filter(f => f.life > 0);
+  }
+
+  function kill(e) {
+    if (e.dead) return; e.dead = true; e.hp = 0;
+    const g = e.ty.gold * (1 + 0.1 * up.gold);
+    G.score += e.ty.pts; G.goldF += g; G.gold = Math.floor(G.goldF); G.kills++;
+    G.lastFormula = e.formula;
+    G.floats.push({ x: e.x, y: e.y, text: pick(ERRORS), color: "#c42b1c", life: 0.8, bold: true });
+    G.floats.push({ x: e.x + 18, y: e.y + 14, text: `+${Math.round(g * 10) / 10} gold`, color: "#8a6d00", life: 0.8 });
+    if (e.boss) {
+      G.bossDone = true; G.shots = [];
+      G.floats.push({ x: e.x, y: e.y - 30, text: "Sheet reconciled!", color: "#217346", life: 2, bold: true });
+      G.lastFormula = `${e.formula}   ← #CALC! Boss defeated`;
+      return;
+    }
+    // Drop éventuel
+    if (Math.random() < 0.03) { G.drops.push({ x: e.x, y: e.y, kind: "heal", life: 14 }); return; }
+    if (Math.random() < DROP_CHANCE[e.key]) {
+      const open = Object.keys(BONUS).filter(k => G.p.lv[k] < MAX_LV);
+      if (open.length) G.drops.push({ x: e.x, y: e.y, kind: pick(open), life: 14 });
+    }
+  }
+
+  function fillRadius(l) { return 40 + 22 * l; }
+
+  function collect(d) {
+    const p = G.p;
+    if (d.kind === "heal") {
+      const gain = Math.min(25, p.maxHp - p.hp); p.hp += gain;
+      G.floats.push({ x: p.x, y: p.y - 24, text: `Undo: +${Math.round(gain)} HP`, color: "#217346", life: 1.2, bold: true });
+      G.lastFormula = "=UNDO()   ← restores 25 HP";
+      return;
+    }
+    const B = BONUS[d.kind];
+    p.lv[d.kind] = Math.min(MAX_LV, p.lv[d.kind] + 1);
+    const el = $(B.tool); el.classList.remove("pop"); void el.offsetWidth; el.classList.add("pop");
+    const l = p.lv[d.kind];
+    G.floats.push({ x: p.x, y: p.y - 24, text: `${B.name} Lv ${l}`, color: "#217346", life: 1.4, bold: true });
+    G.lastFormula = `${B.name} (Lv ${l}/${MAX_LV}): ${B.desc}`;
+    ribbon();
+  }
+
+  function ribbon() {
+    for (const [k, B] of Object.entries(BONUS)) {
+      const el = $(B.tool), l = G ? G.p.lv[k] : 0;
+      el.classList.toggle("on", l > 0);
+      if (l > 0) el.dataset.lv = l; else delete el.dataset.lv;
+      el.title = l > 0 ? `${B.name} (Lv ${l}/${MAX_LV}): ${B.desc}` : `${B.name}: bonus to unlock (${B.desc})`;
+    }
+  }
+
+  function gameOver() {
+    state = "over";
+    bank += G.gold; best = Math.max(best, G.score);
+    store.set("gold", bank); store.set("best", best);
+    $("overTable").innerHTML = [
+      ["Score", G.score.toLocaleString("en-US")],
+      ["Formulas cleared", G.kills],
+      ["Time", fmtTime(G.t)],
+      ["Gold earned", "+" + G.gold],
+      ["Gold in bank", bank.toLocaleString("en-US")],
+      ["Best score", best.toLocaleString("en-US")],
+    ].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("");
+    $("overUi").hidden = false;
+    $("retryBtn").focus();
+  }
+
+  // ---------- Rendu ----------
+  const FONT_CELL = () => getComputedStyle(document.body).getPropertyValue("--font-cell");
+  let fontCell = "";
+
+  function draw() {
+    if (!fontCell) fontCell = FONT_CELL();
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+    const cam = G ? G.cam : { x: 0, y: 0 };
+    const cx = Math.round(cam.x), cy = Math.round(cam.y);
+    const c0 = Math.floor(cx / CW), c1 = Math.min(COLS - 1, Math.ceil((cx + W - HW) / CW));
+    const r0 = Math.floor(cy / CH), r1 = Math.min(ROWS - 1, Math.ceil((cy + H - HH) / CH));
+    const pc = G ? Math.floor(G.p.x / CW) : START_COL, pr = G ? Math.floor(G.p.y / CH) : START_ROW;
+
+    // Quadrillage
+    ctx.save();
+    ctx.beginPath(); ctx.rect(HW, HH, W - HW, H - HH); ctx.clip();
+    ctx.translate(HW - cx, HH - cy);
+    // Cellules surlignées (bonus Fill Color)
+    if (G && G.p.lv.fill) {
+      const Rr = fillRadius(G.p.lv.fill), p = G.p;
+      ctx.fillStyle = "#ffeb9c";
+      for (let c = Math.floor((p.x - Rr) / CW); c <= Math.floor((p.x + Rr) / CW); c++)
+        for (let r = Math.floor((p.y - Rr) / CH); r <= Math.floor((p.y + Rr) / CH); r++)
+          if (!isSolid(c, r) && Math.hypot(c * CW + CW / 2 - p.x, r * CH + CH / 2 - p.y) < Rr) ctx.fillRect(c * CW, r * CH, CW, CH);
+    }
+    ctx.strokeStyle = "#e1e1e1"; ctx.lineWidth = 1; ctx.beginPath();
+    for (let c = c0; c <= c1 + 1; c++) { const x = c * CW + 0.5; ctx.moveTo(x, r0 * CH); ctx.lineTo(x, r1 * CH + CH); }
+    for (let r = r0; r <= r1 + 1; r++) { const y = r * CH + 0.5; ctx.moveTo(c0 * CW, y); ctx.lineTo(c1 * CW + CW, y); }
+    ctx.stroke();
+    // Hors de la feuille (au-delà de AZ / de la dernière ligne)
+    ctx.fillStyle = "#e6e6e6";
+    ctx.fillRect(WW + 1, cy - 50, 4000, 4000); ctx.fillRect(cx - 50, WH + 1, 4000, 4000);
+    ctx.fillStyle = "#8a8886"; ctx.fillRect(WW, 0, 1.5, WH + 1.5); ctx.fillRect(0, WH, WW + 1.5, 1.5);
+    // Reportings et graphiques (murs)
+    if (G) for (const o of G.map.objs) {
+      if (o.c * CW > cx + W || (o.c + o.w) * CW < cx || o.r * CH > cy + H || (o.r + o.h) * CH < cy) continue;
+      o.kind === "table" ? drawTable(o) : drawChart(o);
+    }
+
+    // Cellule active (sous le joueur)
+    ctx.strokeStyle = "#217346"; ctx.lineWidth = 2;
+    ctx.strokeRect(pc * CW + 0.5, pr * CH + 0.5, CW, CH);
+    ctx.fillStyle = "#217346"; ctx.fillRect(pc * CW + CW - 2, pr * CH + CH - 2, 5, 5);
+    ctx.fillStyle = "#fff"; ctx.fillRect(pc * CW + CW - 3, pr * CH + CH - 3, 1, 1);
+
+    if (G) {
+      // Bonus au sol
+      for (const d of G.drops) drawDrop(d);
+      // Ondes AutoSum
+      for (const w of G.waves) {
+        const k = w.t / 0.45;
+        ctx.globalAlpha = 1 - k;
+        ctx.strokeStyle = "#217346"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(w.x, w.y, w.R * (0.3 + 0.7 * k), 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = "#217346"; ctx.font = `700 ${28 + 20 * k}px ${fontCell}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText("Σ", w.x, w.y - 30);
+        ctx.globalAlpha = 1;
+      }
+      // Projectiles
+      for (const b of G.bullets) {
+        ctx.fillStyle = b.crit ? "#c00000" : "#217346";
+        if (G.p.lv.i) {
+          ctx.save(); ctx.translate(b.x, b.y); ctx.transform(1, 0, -0.35, 1, 0, 0);
+          ctx.fillRect(-b.r, -b.r, b.r * 2, b.r * 2); ctx.restore();
+        } else ctx.fillRect(b.x - b.r, b.y - b.r, b.r * 2, b.r * 2);
+        if (G.p.lv.u) ctx.fillRect(b.x - b.r, b.y + b.r + 1.5, b.r * 2, 1.5);
+      }
+      // Ennemis
+      for (const e of G.enemies) drawEnemy(e);
+      for (const s of G.shots) {
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.boss ? 6 : 5, 0, Math.PI * 2);
+        ctx.fillStyle = s.boss ? "#c00000" : "#ffd43b"; ctx.fill();
+        ctx.lineWidth = 1.5; ctx.strokeStyle = s.boss ? "#7a0000" : "#3776ab"; ctx.stroke();
+      }
+      // Joueur
+      if (!(G.p.inv > 0 && Math.floor(G.p.inv * 14) % 2 === 0)) drawArrow(G.p.x, G.p.y);
+      // Textes flottants
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      for (const f of G.floats) {
+        ctx.globalAlpha = Math.min(1, f.life * 2);
+        ctx.font = `${f.bold ? 700 : 400} 13px ${fontCell}`;
+        ctx.fillStyle = f.color; ctx.fillText(f.text, f.x, f.y);
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+
+    // En-têtes de colonnes
+    ctx.font = `12px ${fontCell}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillStyle = "#f3f3f3"; ctx.fillRect(0, 0, W, HH); ctx.fillRect(0, 0, HW, H);
+    for (let c = c0; c <= c1; c++) {
+      const x = HW + c * CW - cx;
+      if (c === pc) { ctx.fillStyle = "#d3f0e0"; ctx.fillRect(x, 0, CW, HH); ctx.fillStyle = "#217346"; ctx.fillRect(x, HH - 2, CW, 2); }
+      ctx.fillStyle = c === pc ? "#185c37" : "#444";
+      ctx.font = `${c === pc ? 700 : 400} 12px ${fontCell}`;
+      if (x + CW > HW) ctx.fillText(colName(c), x + CW / 2, HH / 2 + 1);
+    }
+    for (let r = r0; r <= r1; r++) {
+      const y = HH + r * CH - cy;
+      if (r === pr) { ctx.fillStyle = "#d3f0e0"; ctx.fillRect(0, y, HW, CH); ctx.fillStyle = "#217346"; ctx.fillRect(HW - 2, y, 2, CH); }
+      ctx.fillStyle = r === pr ? "#185c37" : "#444";
+      ctx.font = `${r === pr ? 700 : 400} 12px ${fontCell}`;
+      if (y + CH > HH) ctx.fillText(String(r + 1), HW / 2, y + CH / 2 + 1);
+    }
+    // Séparateurs d'en-têtes
+    ctx.strokeStyle = "#d1d1d1"; ctx.lineWidth = 1; ctx.beginPath();
+    for (let c = c0; c <= c1; c++) { const x = HW + c * CW - cx + 0.5; if (x > HW) { ctx.moveTo(x, 0); ctx.lineTo(x, HH); } }
+    for (let r = r0; r <= r1; r++) { const y = HH + r * CH - cy + 0.5; if (y > HH) { ctx.moveTo(0, y); ctx.lineTo(HW, y); } }
+    ctx.moveTo(0, HH + 0.5); ctx.lineTo(W, HH + 0.5); ctx.moveTo(HW + 0.5, 0); ctx.lineTo(HW + 0.5, H);
+    ctx.stroke();
+    // Coin "tout sélectionner"
+    ctx.fillStyle = "#f3f3f3"; ctx.fillRect(0, 0, HW, HH);
+    ctx.fillStyle = "#b3b3b3"; ctx.beginPath(); ctx.moveTo(HW - 4, 4); ctx.lineTo(HW - 4, HH - 4); ctx.lineTo(HW - 16, HH - 4); ctx.fill();
+
+    // Flèches indiquant les bonus au sol
+    if (G && state !== "title") for (const d of G.drops) drawPointer(d, cx, cy);
+    // Barre de vie du boss + repère s'il est hors champ
+    if (G && G.boss && !G.boss.dead && state !== "title") drawBossUi(G.boss, cx, cy);
+
+    // Curseur de sélection Excel (croix blanche épaisse) à la souris
+    if (mouse.inside && state !== "title") drawCross(mouse.x, mouse.y);
+  }
+
+  function drawTable(o) {
+    const x0 = o.c * CW, y0 = o.r * CH, st = o.st;
+    ctx.textBaseline = "middle";
+    // Titre
+    ctx.fillStyle = "#fff"; ctx.fillRect(x0, y0, o.w * CW, CH);
+    ctx.fillStyle = "#1f3864"; ctx.font = `700 14px ${fontCell}`; ctx.textAlign = "left";
+    ctx.fillText(o.title, x0 + 4, y0 + CH / 2 + 1);
+    // En-tête
+    const yh = y0 + CH;
+    ctx.fillStyle = st.head; ctx.fillRect(x0, yh, o.w * CW, CH);
+    ctx.fillStyle = "#fff"; ctx.font = `700 12px ${fontCell}`;
+    o.head.forEach((h, j) => {
+      if (j === 0) { ctx.textAlign = "left"; ctx.fillText(h, x0 + 4, yh + CH / 2 + 1); }
+      else { ctx.textAlign = "right"; ctx.fillText(h, x0 + (j + 2) * CW - 4, yh + CH / 2 + 1); }
+    });
+    // Lignes
+    o.cells.forEach((row, i) => {
+      const y = yh + (i + 1) * CH, isTotal = o.total && i === o.cells.length - 1;
+      ctx.fillStyle = i % 2 ? "#fff" : st.band; ctx.fillRect(x0, y, o.w * CW, CH);
+      ctx.font = `${isTotal ? 700 : 400} 12px ${fontCell}`;
+      ctx.fillStyle = "#252423"; ctx.textAlign = "left"; ctx.fillText(row[0], x0 + 4, y + CH / 2 + 1);
+      ctx.textAlign = "right";
+      for (let j = 1; j < row.length; j++) {
+        ctx.fillStyle = row[j].neg ? "#c00000" : "#252423";
+        ctx.fillText(row[j].text, x0 + (j + 2) * CW - 4, y + CH / 2 + 1);
+      }
+      if (isTotal) { ctx.fillStyle = st.head; ctx.fillRect(x0, y, o.w * CW, 1.5); }
+    });
+    ctx.strokeStyle = st.line; ctx.lineWidth = 1;
+    ctx.strokeRect(x0 + 0.5, yh + 0.5, o.w * CW - 1, (o.h - 1) * CH - 1);
+  }
+
+  function drawChart(o) {
+    const x0 = o.c * CW, y0 = o.r * CH, w = o.w * CW, h = o.h * CH;
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,.18)"; ctx.shadowBlur = 6; ctx.shadowOffsetY = 2;
+    ctx.fillStyle = "#fff"; ctx.fillRect(x0 + 2, y0 + 2, w - 4, h - 4);
+    ctx.restore();
+    ctx.strokeStyle = "#bfbfbf"; ctx.lineWidth = 1; ctx.strokeRect(x0 + 2.5, y0 + 2.5, w - 5, h - 5);
+    ctx.fillStyle = "#404040"; ctx.font = `14px ${fontCell}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(o.title, x0 + w / 2, y0 + 20);
+    const bx = x0 + 30, by = y0 + h - 40, bw = w - 50, bh = h - 90;
+    ctx.strokeStyle = "#d9d9d9";
+    for (let k = 0; k <= 4; k++) { const y = Math.round(by - bh * k / 4) + 0.5; ctx.beginPath(); ctx.moveTo(bx, y); ctx.lineTo(bx + bw, y); ctx.stroke(); }
+    const gw = bw / o.bars.length;
+    o.bars.forEach(([a, b], i) => {
+      const gx = bx + i * gw + gw * 0.15, ww = gw * 0.33;
+      ctx.fillStyle = "#a5a5a5"; ctx.fillRect(gx, by - bh * a, ww, bh * a);
+      ctx.fillStyle = "#4472c4"; ctx.fillRect(gx + ww + 2, by - bh * b, ww, bh * b);
+      ctx.fillStyle = "#595959"; ctx.font = `11px ${fontCell}`; ctx.fillText("Q" + (i + 1), gx + ww, by + 10);
+    });
+    ctx.font = `11px ${fontCell}`;
+    ctx.fillStyle = "#a5a5a5"; ctx.fillRect(x0 + w / 2 - 70, y0 + h - 18, 8, 8); ctx.fillStyle = "#595959"; ctx.textAlign = "left"; ctx.fillText("Budget", x0 + w / 2 - 58, y0 + h - 14);
+    ctx.fillStyle = "#4472c4"; ctx.fillRect(x0 + w / 2 + 10, y0 + h - 18, 8, 8); ctx.fillStyle = "#595959"; ctx.fillText("Actual", x0 + w / 2 + 22, y0 + h - 14);
+  }
+
+  function drawBossUi(e, cx, cy) {
+    const bw = Math.min(420, W - HW - 40), bx = HW + (W - HW - bw) / 2, by = HH + 10;
+    ctx.fillStyle = "rgba(255,255,255,.92)"; ctx.fillRect(bx - 8, by - 4, bw + 16, 34);
+    ctx.fillStyle = "#252423"; ctx.font = `700 12px ${fontCell}`; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillText(`BOSS ${e.ty.label}`, bx, by + 6);
+    ctx.textAlign = "right"; ctx.fillText(`${Math.ceil(e.hp)} / ${Math.ceil(e.maxHp)}`, bx + bw, by + 6);
+    ctx.fillStyle = "#fff"; ctx.fillRect(bx, by + 14, bw, 10);
+    ctx.fillStyle = "#f8696b"; ctx.fillRect(bx, by + 14, bw * Math.max(0, e.hp / e.maxHp), 10);
+    ctx.strokeStyle = "#c00000"; ctx.lineWidth = 1; ctx.strokeRect(bx + 0.5, by + 14.5, bw - 1, 9);
+    const sx = HW + e.x - cx, sy = HH + e.y - cy;
+    if (sx > HW && sx < W && sy > HH && sy < H) return;
+    const m = 30, ex = Math.min(W - m, Math.max(HW + m, sx)), ey = Math.min(H - m, Math.max(HH + m + 40, sy));
+    const a = Math.atan2(sy - ey, sx - ex);
+    ctx.save(); ctx.translate(ex, ey);
+    ctx.fillStyle = "#c00000"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+    ctx.save(); ctx.rotate(a); ctx.beginPath(); ctx.moveTo(30, 0); ctx.lineTo(13, -11); ctx.lineTo(13, 11); ctx.closePath(); ctx.stroke(); ctx.fill(); ctx.restore();
+    ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI * 2); ctx.stroke(); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.font = `700 12px ${fontCell}`; ctx.textAlign = "center"; ctx.fillText("BOSS", 0, 1);
+    ctx.restore();
+  }
+
+  function drawPointer(d, cx, cy) {
+    if (d.life < 3 && Math.floor(d.life * 8) % 2 === 0) return;
+    const B = d.kind === "heal" ? HEAL : BONUS[d.kind];
+    const sx = HW + d.x - cx, sy = HH + d.y - cy, m = 26;
+    const inside = sx > HW + 12 && sx < W - 12 && sy > HH + 12 && sy < H - 12;
+    ctx.save();
+    ctx.fillStyle = "#217346"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+    if (inside) {
+      // Petite flèche qui rebondit au-dessus du bonus
+      const by = sy - 22 - Math.abs(Math.sin(G.t * 6)) * 6;
+      ctx.beginPath(); ctx.moveTo(sx, by + 8); ctx.lineTo(sx - 8, by - 4); ctx.lineTo(sx - 3, by - 4); ctx.lineTo(sx - 3, by - 12);
+      ctx.lineTo(sx + 3, by - 12); ctx.lineTo(sx + 3, by - 4); ctx.lineTo(sx + 8, by - 4); ctx.closePath();
+      ctx.stroke(); ctx.fill();
+    } else {
+      // Repère au bord de l'écran, orienté vers le bonus
+      const ex = Math.min(W - m, Math.max(HW + m, sx)), ey = Math.min(H - m, Math.max(HH + m, sy));
+      const a = Math.atan2(sy - ey, sx - ex);
+      const pulse = 1 + Math.sin(G.t * 8) * 0.08;
+      ctx.translate(ex, ey); ctx.scale(pulse, pulse);
+      ctx.save(); ctx.rotate(a);
+      ctx.beginPath(); ctx.moveTo(24, 0); ctx.lineTo(10, -9); ctx.lineTo(10, 9); ctx.closePath(); ctx.stroke(); ctx.fill();
+      ctx.restore();
+      ctx.beginPath(); ctx.arc(0, 0, 13, 0, Math.PI * 2); ctx.stroke(); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.font = `${B.style} 14px ${fontCell}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(B.glyph, 0, 1);
+    }
+    ctx.restore();
+  }
+
+  function drawDrop(d) {
+    const B = d.kind === "heal" ? HEAL : BONUS[d.kind];
+    if (d.life < 3 && Math.floor(d.life * 8) % 2 === 0) return;
+    const y = d.y + Math.sin(G.t * 4 + d.x) * 2, w = 24, h = 22;
+    ctx.fillStyle = "#e8f3ec"; ctx.fillRect(d.x - w / 2, y - h / 2, w, h);
+    ctx.strokeStyle = "#217346"; ctx.lineWidth = 1; ctx.strokeRect(d.x - w / 2 + 0.5, y - h / 2 + 0.5, w - 1, h - 1);
+    ctx.fillStyle = B.color || "#252423";
+    ctx.font = `${B.style} 16px ${fontCell}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(B.glyph, d.x, y + 1);
+    if (B.underline) { const tw = ctx.measureText(B.glyph).width; ctx.fillRect(d.x - tw / 2, y + 7, tw, 1.5); }
+  }
+
+  function drawEnemy(e) {
+    const x = e.x - e.w / 2, y = e.y - e.h / 2;
+    if (e.boss) {
+      ctx.save(); ctx.shadowColor = "rgba(0,0,0,.3)"; ctx.shadowBlur = 10; ctx.shadowOffsetY = 3;
+      ctx.fillStyle = e.flash > 0 ? "#ffd7d5" : "#fff"; ctx.fillRect(x, y, e.w, e.h); ctx.restore();
+      ctx.strokeStyle = e.ty.color; ctx.lineWidth = 3; ctx.strokeRect(x + 1.5, y + 1.5, e.w - 3, e.h - 3);
+      ctx.fillStyle = e.ty.color; ctx.font = `700 24px ${fontCell}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(e.ty.label, e.x, e.y + 1);
+      return;
+    }
+    ctx.globalAlpha = e.ghost > 0 ? 0.55 : 1;
+    ctx.fillStyle = e.flash > 0 ? "#ffd7d5" : e.burn > 0 ? "#ffeb9c" : "#fff";
+    ctx.fillRect(x, y, e.w, e.h);
+    ctx.strokeStyle = e.ty.color; ctx.lineWidth = 1.5;
+    ctx.strokeRect(x + 0.5, y + 0.5, e.w - 1, e.h - 1);
+    ctx.fillStyle = e.ty.color; ctx.font = `600 ${e.ty.font}px ${fontCell}`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(e.ty.label, e.x, e.y + 1);
+    if (e.hp < e.maxHp) {
+      ctx.fillStyle = "#e1e1e1"; ctx.fillRect(x, y + e.h + 2, e.w, 3);
+      ctx.fillStyle = "#63be7b"; ctx.fillRect(x, y + e.h + 2, e.w * e.hp / e.maxHp, 3);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Flèche Windows par défaut ; (x, y) = centre de la hitbox
+  const ARROW = [[0,0],[0,17],[4,13],[7,20],[9,19],[6,12],[12,12]];
+  function drawArrow(x, y) {
+    const s = 1.4;
+    ctx.save(); ctx.translate(x - 4 * s, y - 10 * s); ctx.scale(s, s);
+    ctx.beginPath(); ARROW.forEach(([a, b], i) => i ? ctx.lineTo(a, b) : ctx.moveTo(a, b)); ctx.closePath();
+    ctx.shadowColor = "rgba(0,0,0,.35)"; ctx.shadowOffsetX = 1.5; ctx.shadowOffsetY = 1.5; ctx.shadowBlur = 2;
+    ctx.fillStyle = "#fff"; ctx.fill();
+    ctx.shadowColor = "transparent"; ctx.lineWidth = 1 / s * 1.2; ctx.strokeStyle = "#000"; ctx.lineJoin = "miter"; ctx.stroke();
+    ctx.restore();
+  }
+  function drawCross(x, y) {
+    const a = 3, b = 9;
+    ctx.save(); ctx.translate(Math.round(x) + 0.5, Math.round(y) + 0.5);
+    ctx.beginPath();
+    ctx.moveTo(-a, -b); ctx.lineTo(a, -b); ctx.lineTo(a, -a); ctx.lineTo(b, -a); ctx.lineTo(b, a); ctx.lineTo(a, a);
+    ctx.lineTo(a, b); ctx.lineTo(-a, b); ctx.lineTo(-a, a); ctx.lineTo(-b, a); ctx.lineTo(-b, -a); ctx.lineTo(-a, -a); ctx.closePath();
+    ctx.fillStyle = "#fff"; ctx.fill(); ctx.strokeStyle = "#000"; ctx.lineWidth = 1; ctx.stroke();
+    ctx.restore();
+  }
+
+  // ---------- HUD (HTML) ----------
+  let lastHud = "";
+  function hud() {
+    const p = G.p, pc = Math.floor(p.x / CW), pr = Math.floor(p.y / CH);
+    const sig = [pc, pr, p.hp, G.score, G.gold, Math.floor(G.t), G.lastFormula, !!G.boss, G.bossDone].join("|");
+    if (sig === lastHud) return; lastHud = sig;
+    $("namebox").textContent = colName(pc) + (pr + 1);
+    $("fx").textContent = G.lastFormula;
+    const pct = Math.max(0, p.hp / p.maxHp * 100);
+    $("hpfill").style.width = pct + "%";
+    $("hpbar").classList.toggle("low", pct <= 30);
+    $("hptext").textContent = `${Math.ceil(p.hp)}/${p.maxHp}`;
+    $("st-score").textContent = `Score: ${G.score.toLocaleString("en-US")}`;
+    $("st-gold").textContent = `Gold: ${G.gold}`;
+    $("st-time").textContent = G.boss ? (G.bossDone ? "Sheet reconciled!" : `Defeat ${G.boss.ty.label} to close the sheet`)
+                                      : `Boss arrives in: ${fmtTime(Math.max(0, G.L.dur - BOSS_LEAD - G.t))}`;
+    $("st-wave").textContent = `Wave: ${Math.floor(G.t / 30) + 1}`;
+  }
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (state === "play") { update(dt); hud(); }
+    draw();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ---------- Contrôles ----------
+  function start() {
+    newGame(); lastHud = ""; ribbon();
+    $("titleUi").hidden = true; $("overUi").hidden = true; $("pauseUi").hidden = true; $("shopUi").hidden = true; $("wonUi").hidden = true;
+    renderTabs(false);
+    state = "play"; cv.focus?.();
+  }
+
+  // ---------- Onglets des feuilles (niveaux) ----------
+  function renderTabs(shopOn) {
+    $("levelTabs").innerHTML = LEVELS.map((L, i) =>
+      `<span class="tab${i === cur && !shopOn ? " on" : ""}${i > unlocked ? " locked" : ""}" data-lvl="${i}">${i > unlocked ? "🔒 " : ""}${L.name}</span>`).join("");
+    $("tabShop").classList.toggle("on", !!shopOn);
+    $("levelTabs").querySelectorAll("[data-lvl]").forEach(t => t.onclick = () => selectLevel(+t.dataset.lvl));
+  }
+  function preview() {
+    newGame(); for (const k in G.p.lv) G.p.lv[k] = 0; ribbon();
+    const L = LEVELS[cur];
+    $("fx").textContent = `="${L.name}": survive ${fmtTime(L.dur - BOSS_LEAD)}, then defeat ${BOSSES[cur].label} to close this sheet`;
+    $("namebox").textContent = colName(START_COL) + (START_ROW + 1);
+  }
+  function selectLevel(i) {
+    if (state === "play" || state === "pause") return;
+    if (i > unlocked) { $("fx").textContent = `"${LEVELS[i].name}" is protected. Close the previous sheet to unlock it.`; return; }
+    cur = i; store.set("level", cur);
+    $("shopUi").hidden = true; $("overUi").hidden = true; $("wonUi").hidden = true; $("titleUi").hidden = false;
+    state = "title"; renderTabs(false); preview(); showBest();
+  }
+  function levelComplete() {
+    state = "won";
+    const bonus = 25 * (G.level + 1), last = G.level === LEVELS.length - 1;
+    bank += G.gold + bonus; best = Math.max(best, G.score);
+    if (!last) unlocked = Math.max(unlocked, G.level + 1);
+    store.set("gold", bank); store.set("best", best); store.set("unlocked", unlocked);
+    $("wonText").innerHTML = last
+      ? `<b>Month-end close complete!</b> Every sheet of escape-controling.xlsx is reconciled.`
+      : `<b>${G.L.name}</b> is closed and reconciled. <b>${LEVELS[G.level + 1].name}</b> is now unlocked.`;
+    $("wonTable").innerHTML = [
+      ["Score", G.score.toLocaleString("en-US")],
+      ["Formulas cleared", G.kills],
+      ["Gold earned", "+" + G.gold],
+      ["Closing bonus", "+" + bonus],
+      ["Gold in bank", bank.toLocaleString("en-US")],
+    ].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("");
+    $("nextBtn").textContent = last ? "Play again" : "Next sheet";
+    if (!last) cur = G.level + 1;
+    store.set("level", cur);
+    renderTabs(false);
+    $("wonUi").hidden = false; $("nextBtn").focus();
+  }
+
+  // ---------- Feuille Upgrades ----------
+  let shopFrom = "title";
+  function openShop() {
+    if (state === "play" || state === "pause") return;
+    if (state !== "shop") shopFrom = state;
+    state = "shop";
+    $("shopUi").hidden = false; $("overUi").hidden = true; $("titleUi").hidden = true; $("wonUi").hidden = true;
+    renderTabs(true);
+    $("namebox").textContent = "A1";
+    renderShop();
+  }
+  function closeShop() {
+    if (state !== "shop") return;
+    $("shopUi").hidden = true;
+    renderTabs(false);
+    state = shopFrom === "over" ? "over" : "title";
+    if (state === "title") preview();
+    $(state === "over" ? "overUi" : "titleUi").hidden = false;
+    showBest();
+  }
+  function renderShop() {
+    const cols = ["A", "B", "C", "D", "E"];
+    const fmt = n => n.toLocaleString("en-US");
+    let r = 0;
+    const row = (cells, cls = "") => `<tr class="${cls}"><th class="rn">${++r}</th>${cells}</tr>`;
+    let html = `<table class="xl"><thead><tr><th class="corner"></th>${cols.map(c => `<th style="min-width:${c === "B" ? 230 : c === "A" ? 130 : 90}px">${c}</th>`).join("")}</tr></thead><tbody>`;
+    html += row(`<td class="h1" colspan="5">Upgrades budget</td>`);
+    html += row(`<td>Gold in bank</td><td class="num bank">${fmt(bank)}</td><td></td><td></td><td></td>`);
+    html += row(`<td colspan="5" style="color:#605e5c">Upgrades are permanent and apply from your next game.</td>`);
+    html += row(`<td>Upgrade</td><td>Effect per level</td><td>Level</td><td class="num">Next cost</td><td></td>`, "thead");
+    UPGRADES.forEach((u, i) => {
+      const l = up[u.id], maxed = l >= u.max, c = cost(u, l), ok = !maxed && bank >= c;
+      html += row(`<td>${u.name}</td><td>${u.desc}</td>
+        <td><span class="databar"><b style="width:${l / u.max * 100}%"></b></span>${l}/${u.max}</td>
+        <td class="num ${!maxed && !ok ? "neg" : ""}">${maxed ? "–" : fmt(c)}</td>
+        <td><button class="btn" data-buy="${u.id}" ${ok ? "" : "disabled"}>${maxed ? "MAX" : "Buy"}</button></td>`,
+        "row" + (i % 2 ? " band" : ""));
+    });
+    html += row(`<td colspan="5"></td>`);
+    html += row(`<td colspan="5"><button class="btn primary" id="shopPlay">Play (Enter)</button> <button class="btn" id="shopBack">Back to ${LEVELS[cur].name}</button></td>`);
+    html += row(`<td colspan="5"></td>`);
+    html += row(`<td colspan="5"><button class="btn" id="resetBtn" style="color:#c42b1c;border-color:#c42b1c">Reset save</button> <span style="color:#605e5c">Clears gold, upgrades, best score and unlocked sheets.</span></td>`);
+    for (let k = 0; k < 6; k++) html += row(`<td></td><td></td><td></td><td></td><td></td>`);
+    html += "</tbody></table>";
+    $("shopUi").innerHTML = html;
+    $("shopPlay").onclick = start;
+    $("shopBack").onclick = closeShop;
+    let armed = false;
+    $("resetBtn").onclick = () => {
+      if (!armed) {
+        armed = true; $("resetBtn").textContent = "Click again to confirm";
+        setTimeout(() => { if ($("resetBtn")) { armed = false; $("resetBtn").textContent = "Reset save"; } }, 3000);
+        return;
+      }
+      bank = 0; best = 0; unlocked = 0; cur = 0;
+      for (const k in up) up[k] = 0;
+      store.set("gold", 0); store.set("best", 0); store.set("upgrades", up); store.set("unlocked", 0); store.set("level", 0);
+      renderShop(); renderTabs(true);
+      $("fx").textContent = '="Fresh save. Good luck, controller."';
+      $("bestLine").textContent = "Formulas come in waves. Don't let them touch you.";
+    };
+    $("shopUi").querySelectorAll("tr.row").forEach((tr, i) => {
+      const u = UPGRADES[i];
+      tr.onmouseenter = () => { $("fx").textContent = up[u.id] >= u.max ? `="${u.name} maxed out"` : `=ROUND(${u.base}*${u.growth}^${up[u.id]},0)`; $("namebox").textContent = "D" + (i + 5); };
+    });
+    $("shopUi").querySelectorAll("[data-buy]").forEach(b => b.onclick = () => buy(b.dataset.buy));
+  }
+  function buy(id) {
+    const u = UPGRADES.find(x => x.id === id), l = up[id];
+    if (l >= u.max || bank < cost(u, l)) return;
+    bank -= cost(u, l); up[id] = l + 1;
+    store.set("gold", bank); store.set("upgrades", up);
+    renderShop();
+    $("fx").textContent = `${u.name} → Lv ${up[id]}/${u.max}`;
+  }
+  function setPause(on) {
+    if (on && state === "play") { state = "pause"; $("pauseUi").hidden = false; keys.clear(); }
+    else if (!on && state === "pause") { state = "play"; $("pauseUi").hidden = true; }
+  }
+  $("startBtn").onclick = start;
+  $("retryBtn").onclick = start;
+  $("shopBtn1").onclick = openShop;
+  $("shopBtn2").onclick = openShop;
+  $("shopBtn3").onclick = openShop;
+  $("nextBtn").onclick = start;
+  $("tabShop").onclick = openShop;
+  $("tabLocked").onclick = () => { $("fx").textContent = '="This sheet is protected. Nice try."'; };
+  $("resumeBtn").onclick = () => setPause(false);
+  $("closeBtn").onclick = () => setPause(true);
+
+  addEventListener("keydown", e => {
+    const k = e.key.toLowerCase();
+    if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) e.preventDefault();
+    if (k === "enter" && (state === "title" || state === "over" || state === "shop" || state === "won")) { e.preventDefault(); start(); return; }
+    if (k === "escape" && state === "shop") { closeShop(); return; }
+    if (k === "p" || k === "escape") { if (state === "play") setPause(true); else if (state === "pause") setPause(false); return; }
+    keys.add(k);
+  });
+  addEventListener("keyup", e => keys.delete(e.key.toLowerCase()));
+  addEventListener("blur", () => { keys.clear(); setPause(true); });
+
+  cv.addEventListener("pointermove", e => { const r = cv.getBoundingClientRect(); mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top; mouse.inside = true; });
+  cv.addEventListener("pointerleave", () => { mouse.inside = false; });
+
+  // Position initiale de la visée : à droite du joueur
+  mouse.x = W * 0.75; mouse.y = H / 2;
+  renderTabs(false); preview();
+})();
+</script>
