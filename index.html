@@ -72,7 +72,7 @@ body {
 
 /* Grille */
 .gridwrap { flex: 1; position: relative; min-height: 0; }
-canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: none; display: block; }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
 /* Onglets de feuilles + barre d'état */
 .sheets { display: flex; align-items: stretch; height: 26px; background: var(--chrome); border-top: 1px solid var(--chrome-line); flex: none; overflow: hidden; white-space: nowrap; }
@@ -189,7 +189,7 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: none; 
         <h2>Financial Controller:</h2>
         <table>
           <tr><td>Move</td><td><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> (or WASD / ZQSD)</td></tr>
-          <tr><td>Aim</td><td>mouse, firing is automatic</td></tr>
+          <tr><td>Aim</td><td>automatic: strongest formula in range first, then the nearest</td></tr>
           <tr><td>Goal</td><td>survive, then beat the boss to close the sheet; reports are walls</td></tr>
           <tr><td>Bonuses</td><td>formulas drop ribbon tools (B, I, U…), walk over them</td></tr>
           <tr><td>Pause</td><td><kbd>P</kbd> or <kbd>Esc</kbd></td></tr>
@@ -554,13 +554,13 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: none; 
     p.inv = Math.max(0, p.inv - dt);
     if (p.regen) p.hp = Math.min(p.maxHp, p.hp + p.regen * dt);
 
-    // Tir automatique vers la souris
+    // Visée automatique : la formule la plus forte à portée, puis la plus proche
     const lv = p.lv;
+    G.target = pickTarget();
     G.fireT -= dt;
-    if (G.fireT <= 0) {
+    if (G.fireT <= 0 && G.target) {
       G.fireT = p.fireEvery * Math.pow(0.82, lv.down);
-      const tx = mouse.x - HW + G.cam.x, ty = mouse.y - HH + G.cam.y;
-      const base = Math.atan2(ty - p.y, tx - p.x) || 0;
+      const base = Math.atan2(G.target.y - p.y, G.target.x - p.x);
       const n = 1 + 2 * lv.i, step = 0.16;
       for (let k = 0; k < n; k++) {
         const a = base + (k - (n - 1) / 2) * step;
@@ -607,9 +607,9 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: none; 
     G.spawnT -= dt;
     if (G.spawnT <= 0) {
       const te = G.t + G.L.diff;
-      G.spawnT = Math.max(0.22, 1.3 - te * 0.011) * (G.boss ? 1.6 : 1);
+      G.spawnT = Math.max(0.22, 1.3 - te * 0.011);
       const n = 1 + Math.floor(te / 60);
-      for (let i = 0; i < n; i++) spawnEnemy();
+      if (!G.boss) for (let i = 0; i < n; i++) spawnEnemy();   // plus de renforts pendant le boss
     }
 
     // Projectiles
@@ -711,6 +711,32 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: none; 
     G.bullets = G.bullets.filter(b => b.life > 0);
     for (const f of G.floats) { f.life -= dt; f.y -= 22 * dt; }
     G.floats = G.floats.filter(f => f.life > 0);
+  }
+
+  const RANGE = 520;
+  // Vrai si aucun reporting ne bloque la ligne de tir (le boss passe au-dessus des murs)
+  function clearShot(e) {
+    const p = G.p, d = Math.hypot(e.x - p.x, e.y - p.y), n = Math.ceil(d / 16);
+    for (let i = 1; i < n; i++) {
+      const x = p.x + (e.x - p.x) * i / n, y = p.y + (e.y - p.y) * i / n;
+      if (e.boss && Math.abs(x - e.x) < e.w / 2 && Math.abs(y - e.y) < e.h / 2) return true;
+      if (isSolid(Math.floor(x / CW), Math.floor(y / CH))) return false;
+    }
+    return true;
+  }
+  function pickTarget() {
+    const p = G.p;
+    let best = null, bs = -1, bd = 1e9, fallback = null, fd = 1e9;
+    for (const e of G.enemies) {
+      if (e.hp <= 0) continue;
+      const d = Math.hypot(e.x - p.x, e.y - p.y);
+      if (d > RANGE) continue;
+      if (d < fd) { fd = d; fallback = e; }
+      if (!clearShot(e)) continue;
+      const strength = e.maxHp;
+      if (strength > bs || (strength === bs && d < bd)) { bs = strength; bd = d; best = e; }
+    }
+    return best || fallback;
   }
 
   function kill(e) {
@@ -848,6 +874,14 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: none; 
       }
       // Ennemis
       for (const e of G.enemies) drawEnemy(e);
+      // Cible : bordure « fourmis » comme une copie Excel
+      if (G.target && !G.target.dead && state === "play") {
+        const e = G.target;
+        ctx.save(); ctx.setLineDash([5, 3]); ctx.lineDashOffset = -G.t * 30;
+        ctx.strokeStyle = "#217346"; ctx.lineWidth = 2;
+        ctx.strokeRect(e.x - e.w / 2 - 4, e.y - e.h / 2 - 4, e.w + 8, e.h + 8);
+        ctx.restore();
+      }
       for (const s of G.shots) {
         ctx.beginPath(); ctx.arc(s.x, s.y, s.boss ? 6 : 5, 0, Math.PI * 2);
         ctx.fillStyle = s.boss ? "#c00000" : "#ffd43b"; ctx.fill();
@@ -899,7 +933,7 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: none; 
     if (G && G.boss && !G.boss.dead && state !== "title") drawBossUi(G.boss, cx, cy);
 
     // Curseur de sélection Excel (croix blanche épaisse) à la souris
-    if (mouse.inside && state !== "title") drawCross(mouse.x, mouse.y);
+
   }
 
   function drawTable(o) {
